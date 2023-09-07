@@ -32,7 +32,7 @@ spark = SparkSession.builder.appName("Segmentacion").getOrCreate()
 
 # COMMAND ----------
 
-df_telco = spark.read.csv('/FileStore/churn_Operacion_2.csv', header=True, inferSchema=True)
+df_telco = spark.read.csv('/FileStore/curso/churn_Operacion_2.csv', header=True, inferSchema=True)
 
 # COMMAND ----------
 
@@ -100,7 +100,7 @@ Mischema = StructType(
 
 # COMMAND ----------
 
-df_telco = spark.read.csv('/FileStore/churn_Operacion_2.csv', header=True, schema=Mischema)
+df_telco = spark.read.csv('/FileStore/curso/churn_Operacion_2.csv', header=True, schema=Mischema)
 
 # COMMAND ----------
 
@@ -580,3 +580,7 @@ evaluador = ClusteringEvaluator()
 
 silhouette = evaluador.evaluate(predictions)
 print("El coeficiente Silhouette usando distancias euclidianas al cuadrado es = " + str(silhouette))
+
+# COMMAND ----------
+
+
