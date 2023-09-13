@@ -14,7 +14,7 @@ schema = StructType([
   StructField("ocean_proximity", StringType(), True)
 ])
  
-housing_df = spark.read.format("csv").schema(schema).option("header", "true").load("/FileStore/housing.csv")
+housing_df = spark.read.format("csv").schema(schema).option("header", "true").load("/FileStore/curso/housing.csv")
 
 # COMMAND ----------
 
@@ -38,6 +38,7 @@ type(housing_df)
 
 # COMMAND ----------
 
+# separacion del conjunto de datos
 train_df, test_df = housing_df.randomSplit([0.99, 0.01], seed=42)
 
 # COMMAND ----------
@@ -73,3 +74,7 @@ from pyspark.ml.evaluation import RegressionEvaluator
 regression_evaluator = RegressionEvaluator(predictionCol="prediction", labelCol="median_house_value", metricName="r2")
 rmse = regression_evaluator.evaluate(pred_df)
 print(f"val_r2_score on test dataset: {rmse:.3f}")
+
+# COMMAND ----------
+
+

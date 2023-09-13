@@ -23,6 +23,7 @@ housing_df = spark.read.format("csv").schema(schema).option("header", "true").lo
 
 # COMMAND ----------
 
+# conversion a delta table en databricks
 housing_df.write.saveAsTable("default.housing_t")
 
 # COMMAND ----------
@@ -66,3 +67,7 @@ census_df.write.saveAsTable("default.census_t")
 
 # MAGIC %sql
 # MAGIC SELECT * FROM census_t
+
+# COMMAND ----------
+
+
