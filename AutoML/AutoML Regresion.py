@@ -69,6 +69,10 @@ display(pred_df)
 
 # COMMAND ----------
 
+pred_df.dtype()
+
+# COMMAND ----------
+
 from pyspark.ml.evaluation import RegressionEvaluator
  
 regression_evaluator = RegressionEvaluator(predictionCol="prediction", labelCol="median_house_value", metricName="r2")

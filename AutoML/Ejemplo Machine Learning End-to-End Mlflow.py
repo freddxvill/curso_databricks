@@ -338,6 +338,10 @@ print(f'AUC: {roc_auc_score(y_test, model.predict(X_test))}')
 
 # COMMAND ----------
 
+#
+
+# COMMAND ----------
+
 spark_df = spark.createDataFrame(X_train)
 # Reemplazar <username> con su username antes de correr esta celda.
 table_path = "dbfs:/dannyhuanca@hotmail.com/delta/wine_data"
@@ -387,6 +391,7 @@ display(new_data)
 
 # COMMAND ----------
 
+# colocando el token
 import os
 os.environ["DATABRICKS_TOKEN"] = "dapi78f9ga8381asd2d43f4497asdfad22f4b08e65fc-3"
 
