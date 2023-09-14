@@ -1,3 +1,3 @@
 # curso_databricks
 
-practicas
+Practicas sobre Spark y analitica de datos
