@@ -4,6 +4,11 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Creación y transformación de las tablas
+
+# COMMAND ----------
+
 # MAGIC %sql
 # MAGIC DROP TABLE IF EXISTS account;
 # MAGIC create table account
@@ -164,7 +169,7 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Selección de columnas
+# MAGIC ### Selección de columnas finales
 
 # COMMAND ----------
 
@@ -206,6 +211,7 @@ df.printSchema()
 
 # COMMAND ----------
 
+# limpieza de valores nulos
 df_clean = df.na.drop()
 df_clean.show()
 
@@ -222,7 +228,6 @@ from pyspark.sql import functions as F
 df_clean.groupBy(F.col('estado')).count().show()
 
 # COMMAND ----------
-
 
 # Etiquetas de candidatos
 from pyspark.sql.functions import when, col
@@ -271,17 +276,13 @@ operation_indexer = StringIndexer(inputCol='operation', outputCol= 'operationInd
 operation_encoder = OneHotEncoder(inputCol = 'operationIndex', outputCol= 'operationVec')
 
 
-# COMMAND ----------
-
-#df_final.columns
-
-# COMMAND ----------
-
 candidato_indexer = StringIndexer(inputCol= 'candidato', outputCol= 'candidatoIndex')
 
 # COMMAND ----------
 
-assembler = VectorAssembler(inputCols = ['regionVec', 'frecuenciaVec', 'operationVec',
+assembler = VectorAssembler(inputCols = ['regionVec', 
+                                        'frecuenciaVec', 
+                                        'operationVec',
                                         'habitantes',
                                         'salario_promedio',
                                         'monto_prestamo',
@@ -291,6 +292,16 @@ assembler = VectorAssembler(inputCols = ['regionVec', 'frecuenciaVec', 'operatio
                                         'balance_promedio',
                                         'cantidad_transacciones',
                                         ], outputCol= 'features')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Entrenamiento de modelos
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #### Modelo inicial base
 
 # COMMAND ----------
 
@@ -360,7 +371,7 @@ plt.show()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Entrenamiento de Modelos
+# MAGIC ## Entrenamiento de otros modelos y comparación
 
 # COMMAND ----------
 
@@ -377,6 +388,7 @@ def train_model(modelo):
                                 assembler, 
                                 modelo])
     evals = []
+    auc_ini=0
     for i in range(3):
         train_data, test_data = df_final.randomSplit([0.7,0.3])
         fit_model = pipeline_model.fit(train_data)
@@ -385,48 +397,50 @@ def train_model(modelo):
         auc= me_eval.evaluate(results)
         evals.append(auc)
         print(f'{modelo.uid} --- > AUC: {auc}')
+        if auc > auc_ini:
+            auc_ini = auc
+            best_fit_model = fit_model
+            results_model = results 
+
     media_auc = sum(evals) / len(evals)
     print(f'{modelo.uid} --- > AUC_prom: {media_auc}')
-    return fit_model
+    return best_fit_model, results_model
 
 # COMMAND ----------
 
+# Modelos
 from pyspark.ml.classification import GBTClassifier, LogisticRegression, DecisionTreeClassifier
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### GBTClassifier
+
+# COMMAND ----------
+
 gbt = GBTClassifier(featuresCol= 'features', labelCol='candidatoIndex',
-                    maxIter=25, maxDepth=5, maxBins=8)
-gbt_fit_pipe = train_model(gbt)
-
-#lr_fit_model = train_model(LogisticRegression)
+                    maxIter=25, maxDepth=6, maxBins=16)
+gbt_fit_pipe, results_gbt = train_model(gbt)
 
 # COMMAND ----------
 
-dt = DecisionTreeClassifier(featuresCol= 'features', labelCol='candidatoIndex')
-dt_fit_pipe = train_model(dt)
+# MAGIC %md
+# MAGIC #### Evaluación GBT
+# MAGIC
 
 # COMMAND ----------
 
-
-tree_debug_string = dt_fit_pipe.stages[-1].toDebugString
-print(tree_debug_string)
+me_eval = BinaryClassificationEvaluator(rawPredictionCol= 'prediction', labelCol = 'candidatoIndex')
+results_gbt.select('candidatoIndex', 'prediction', 'probability').show(10)
 
 # COMMAND ----------
 
-lr = LogisticRegression(featuresCol= 'features', labelCol='candidatoIndex',
-                        regParam=0.01, elasticNetParam=0.5, maxIter= 150)
-lr_fit_pipe = train_model(lr)
+auc= me_eval.evaluate(results_gbt)
+print(auc)
 
 # COMMAND ----------
 
 feature_importances = gbt_fit_pipe.stages[-1].featureImportances
-
-# COMMAND ----------
-
-feature_importances
-
-# COMMAND ----------
 
 plt.figure(figsize=(10, 6))
 plt.bar(range(len(feature_importances)), feature_importances)
@@ -439,8 +453,85 @@ plt.show()
 
 # COMMAND ----------
 
-display(results)
+# MAGIC %md
+# MAGIC ### Arbol de decision
 
 # COMMAND ----------
 
+dt = DecisionTreeClassifier(featuresCol= 'features', labelCol='candidatoIndex',
+                            maxDepth=10, maxBins=32)
+dt_fit_pipe, results_dt = train_model(dt)
 
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #### Evaluación Arbol de desición
+
+# COMMAND ----------
+
+me_eval = BinaryClassificationEvaluator(rawPredictionCol= 'prediction', labelCol = 'candidatoIndex')
+results_dt.select('candidatoIndex', 'prediction', 'probability').show(10)
+
+# COMMAND ----------
+
+auc= me_eval.evaluate(results_dt)
+print(auc)
+
+# COMMAND ----------
+
+feature_importances = dt_fit_pipe.stages[-1].featureImportances
+
+plt.figure(figsize=(10, 6))
+plt.bar(range(len(feature_importances)), feature_importances)
+plt.xlabel('Índice de la característica')
+plt.ylabel('Importancia de las características')
+plt.title('Feature Importance del modelo GBTClassifier')
+plt.xticks(range(len(feature_importances)), range(len(feature_importances)))
+plt.tight_layout()
+plt.show()
+
+# COMMAND ----------
+
+train_data.columns[:-1]
+
+# COMMAND ----------
+
+tree_debug_string = dt_fit_pipe.stages[-1].toDebugString
+print(tree_debug_string)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Regresion Logistica
+
+# COMMAND ----------
+
+lr = LogisticRegression(featuresCol= 'features', labelCol='candidatoIndex')
+lr_fit_pipe, results_lr = train_model(lr)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #### Evaluación - Regresión logistica
+
+# COMMAND ----------
+
+me_eval = BinaryClassificationEvaluator(rawPredictionCol= 'prediction', labelCol = 'candidatoIndex')
+results_lr.select('candidatoIndex', 'prediction', 'probability').show(10)
+
+# COMMAND ----------
+
+auc= me_eval.evaluate(results_lr)
+print(auc)
+
+# COMMAND ----------
+
+training_summary = lr_fit_pipe.stages[-1].summary
+roc = training_summary.roc.toPandas()
+
+import matplotlib.pyplot as plt
+plt.plot(roc['FPR'], roc['TPR'])
+plt.ylabel('True positive rate')
+plt.xlabel('False postive rate')
+plt.title('curva ROC')
+plt.show()
