@@ -1,11 +1,12 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Banco Berka - ML
+
+# COMMAND ----------
+
 # MAGIC %sql
 # MAGIC DROP TABLE IF EXISTS account;
 # MAGIC create table account
-# MAGIC (account_id float,
-# MAGIC district_id float,
-# MAGIC frequency string,
-# MAGIC `date` float)
 # MAGIC USING csv
 # MAGIC OPTIONS (path "/FileStore/curso/account.asc",  header "true", delimiter ";", inferSchema "true")
 
@@ -116,7 +117,6 @@
 # MAGIC 				) as di on di.c_id = c.client_id
 # MAGIC   	INNER JOIN (
 # MAGIC 				SELECT account_id as ac_id
-# MAGIC 					 -- , district_id as district_id_cuenta -- info  a consideracion debido a que nos interesa el distrito del cliente
 # MAGIC 					 -- , STR_TO_DATE(date, '%y%m%d') as fecha_creacion_cuenta -- conversion de la fecha
 # MAGIC 					 , case
 # MAGIC 						  when frequency = 'POPLATEK MESICNE' then 'emision mensual'
@@ -151,7 +151,10 @@
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select * from tabla_minable
+# MAGIC select * 
+# MAGIC from tabla_minable
+# MAGIC ;
+# MAGIC
 
 # COMMAND ----------
 
@@ -160,8 +163,13 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Selección de columnas
+
+# COMMAND ----------
+
 # MAGIC %sql
-# MAGIC select distrito, region, habitantes, salario_promedio
+# MAGIC select region, habitantes, salario_promedio
 # MAGIC      , frecuencia_emision, monto_prestamo, duracion_prestamo
 # MAGIC      , pagos_mensuales, operation, monto_dinero_promedio
 # MAGIC      , balance_promedio, cantidad_transacciones
@@ -172,8 +180,13 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Tabla minable - SQL a Dataframe Spark
+
+# COMMAND ----------
+
 df = spark.sql(""" 
-                select distrito, region, habitantes, salario_promedio
+                select region, habitantes, salario_promedio
                     , frecuencia_emision, monto_prestamo, duracion_prestamo
                     , pagos_mensuales, operation, monto_dinero_promedio
                     , balance_promedio, cantidad_transacciones
@@ -197,7 +210,6 @@ df_clean = df.na.drop()
 df_clean.show()
 
 # COMMAND ----------
-
 
 df_clean.count()
 
@@ -236,34 +248,40 @@ df_final.groupBy(F.col('candidato')).count().show()
 
 # COMMAND ----------
 
+df_final.printSchema()
+
+# COMMAND ----------
+
+# Division de los datos en train 70% y test 30%
+train_data, test_data = df_final.randomSplit([0.7,0.3])
+
+# COMMAND ----------
+
 from pyspark.ml.feature import VectorAssembler, OneHotEncoder, StringIndexer
 
-# one hot encoding distrito
-district_indexer = StringIndexer(inputCol= 'distrito', outputCol= 'districtIndex')
-district_encoder = OneHotEncoder(inputCol = 'districtIndex', outputCol= 'districtVec')
-
 # one hot encoding region
-region_indexer = StringIndexer(inputCol='region', outputCol= 'regionIndex')
+region_indexer = StringIndexer(inputCol='region', outputCol= 'regionIndex', handleInvalid='skip')
 region_encoder = OneHotEncoder(inputCol = 'regionIndex', outputCol= 'regionVec')
 
 # one hot encoding frecuencia_emision
-frecuencia_indexer = StringIndexer(inputCol='frecuencia_emision', outputCol= 'frecuenciaIndex')
+frecuencia_indexer = StringIndexer(inputCol='frecuencia_emision', outputCol= 'frecuenciaIndex', handleInvalid='skip')
 frecuencia_encoder = OneHotEncoder(inputCol = 'frecuenciaIndex', outputCol= 'frecuenciaVec')
-
 # one hot encoding tipo
-operation_indexer = StringIndexer(inputCol='operation', outputCol= 'operationIndex')
+operation_indexer = StringIndexer(inputCol='operation', outputCol= 'operationIndex', handleInvalid='skip')
 operation_encoder = OneHotEncoder(inputCol = 'operationIndex', outputCol= 'operationVec')
 
 
 # COMMAND ----------
 
-df_final.columns
+#df_final.columns
 
 # COMMAND ----------
 
 candidato_indexer = StringIndexer(inputCol= 'candidato', outputCol= 'candidatoIndex')
 
-assembler = VectorAssembler(inputCols = ['districtVec', 'regionVec', 'frecuenciaVec', 'operationVec',
+# COMMAND ----------
+
+assembler = VectorAssembler(inputCols = ['regionVec', 'frecuenciaVec', 'operationVec',
                                         'habitantes',
                                         'salario_promedio',
                                         'monto_prestamo',
@@ -284,21 +302,15 @@ log_reg_candidato = LogisticRegression(featuresCol= 'features', labelCol='candid
 # COMMAND ----------
 
 pipeline = Pipeline(stages= [
-    district_indexer,
     region_indexer,
     frecuencia_indexer,
     operation_indexer,
-    district_encoder,
     region_encoder,
     frecuencia_encoder,
     operation_encoder,
     candidato_indexer,
     assembler, 
     log_reg_candidato])
-
-# COMMAND ----------
-
-train_data, test_data = df_final.randomSplit([0.7,0.3])
 
 # COMMAND ----------
 
@@ -315,6 +327,10 @@ type(results)
 
 # COMMAND ----------
 
+results.show()
+
+# COMMAND ----------
+
 display(results)
 
 # COMMAND ----------
@@ -322,7 +338,7 @@ display(results)
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
 
 me_eval = BinaryClassificationEvaluator(rawPredictionCol= 'prediction', labelCol = 'candidatoIndex')
-results.select('candidatoIndex', 'prediction').show(10)
+results.select('candidatoIndex', 'prediction', 'probability').show(10)
 
 # COMMAND ----------
 
@@ -344,111 +360,81 @@ plt.show()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Gradient-Boosted Trees (GBTs)
+# MAGIC ## Entrenamiento de Modelos
 
 # COMMAND ----------
 
-from pyspark.ml.classification import GBTClassifier
-
-model = GBTClassifier(featuresCol= 'features', labelCol='candidatoIndex')
-
-# COMMAND ----------
-
-pipeline = Pipeline(stages= [
-    district_indexer,
-    region_indexer,
-    frecuencia_indexer,
-    operation_indexer,
-    district_encoder,
-    region_encoder,
-    frecuencia_encoder,
-    operation_encoder,
-    candidato_indexer,
-    assembler, 
-    model])
-
-# COMMAND ----------
-
-fit_model = pipeline.fit(train_data)
-
-# COMMAND ----------
-
-results= fit_model.transform(test_data)
-display(results)
-
-# COMMAND ----------
-
-me_eval = BinaryClassificationEvaluator(rawPredictionCol= 'prediction', labelCol = 'candidatoIndex')
-
-results.select('candidatoIndex', 'prediction').show(10)
-
-# COMMAND ----------
-
-auc= me_eval.evaluate(results)
-print(auc)
-
-# COMMAND ----------
-
-model.uid
-
-# COMMAND ----------
-
-def train_model(modelo, features='features', labelcol='candidatoIndex'):
-    model = modelo(featuresCol=features, labelCol=labelcol)
-    pipeline = Pipeline(stages= [
-                                district_indexer,
+# Funcion para entrenar distintos modelos 
+def train_model(modelo):
+    pipeline_model = Pipeline(stages= [
                                 region_indexer,
                                 frecuencia_indexer,
                                 operation_indexer,
-                                district_encoder,
                                 region_encoder,
                                 frecuencia_encoder,
                                 operation_encoder,
                                 candidato_indexer,
                                 assembler, 
-                                model])
-    fit_model = pipeline.fit(train_data)
-    results= fit_model.transform(test_data)
-    me_eval = BinaryClassificationEvaluator(rawPredictionCol= 'prediction', labelCol = labelcol)
-    auc= me_eval.evaluate(results)
-    print(f'{model.uid}-- > AUC: {auc}')
+                                modelo])
+    evals = []
+    for i in range(3):
+        train_data, test_data = df_final.randomSplit([0.7,0.3])
+        fit_model = pipeline_model.fit(train_data)
+        results = fit_model.transform(test_data)
+        me_eval = BinaryClassificationEvaluator(rawPredictionCol= 'prediction', labelCol = 'candidatoIndex')
+        auc= me_eval.evaluate(results)
+        evals.append(auc)
+        print(f'{modelo.uid} --- > AUC: {auc}')
+    media_auc = sum(evals) / len(evals)
+    print(f'{modelo.uid} --- > AUC_prom: {media_auc}')
     return fit_model
 
 # COMMAND ----------
 
-from pyspark.ml.classification import GBTClassifier, NaiveBayes, LinearSVC
-
-gbt_model = train_model(GBTClassifier)
-nb_model = train_model(NaiveBayes)
-svc_model = train_model(LinearSVC)
-
+from pyspark.ml.classification import GBTClassifier, LogisticRegression, DecisionTreeClassifier
 
 # COMMAND ----------
 
-feature_importances = gbt_model.stages[-1].featureImportances
+gbt = GBTClassifier(featuresCol= 'features', labelCol='candidatoIndex',
+                    maxIter=25, maxDepth=5, maxBins=8)
+gbt_fit_pipe = train_model(gbt)
+
+#lr_fit_model = train_model(LogisticRegression)
 
 # COMMAND ----------
 
-# Supongamos que tienes una lista de nombres de características que corresponden a tus datos.
-feature_names = ["feature1", "feature2", "feature3", ...]  # Reemplaza con tus nombres de características.
+dt = DecisionTreeClassifier(featuresCol= 'features', labelCol='candidatoIndex')
+dt_fit_pipe = train_model(lr)
 
-# Crea una lista de índices para ordenar las importancias de las características.
-indices = range(len(feature_importances))
+# COMMAND ----------
 
-# Ordena las importancias de las características en orden descendente.
-sorted_feature_importances = sorted(zip(feature_importances, feature_names), reverse=True)
+lr = LogisticRegression(featuresCol= 'features', labelCol='candidatoIndex',
+                        regParam=0.01, elasticNetParam=0.5, maxIter= 150)
+lr_fit_pipe = train_model(lr)
 
-# Extrae las importancias ordenadas y los nombres de las características correspondientes.
-sorted_importances, sorted_names = zip(*sorted_feature_importances)
+# COMMAND ----------
 
-# Crea el gráfico de barras.
+feature_importances = gbt_fit_pipe.stages[-1].featureImportances
+
+# COMMAND ----------
+
+feature_importances
+
+# COMMAND ----------
+
 plt.figure(figsize=(10, 6))
-plt.bar(indices, sorted_importances, align="center")
-plt.xticks(indices, sorted_names, rotation=90)
-plt.xlabel("Características")
-plt.ylabel("Importancia")
-plt.title("Importancia de las Características")
+plt.bar(range(len(feature_importances)), feature_importances)
+plt.xlabel('Índice de la característica')
+plt.ylabel('Importancia de las características')
+plt.title('Feature Importance del modelo GBTClassifier')
+plt.xticks(range(len(feature_importances)), range(len(feature_importances)))
 plt.tight_layout()
-
-# Muestra el gráfico.
 plt.show()
+
+# COMMAND ----------
+
+display(results)
+
+# COMMAND ----------
+
+
