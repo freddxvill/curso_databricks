@@ -404,7 +404,13 @@ gbt_fit_pipe = train_model(gbt)
 # COMMAND ----------
 
 dt = DecisionTreeClassifier(featuresCol= 'features', labelCol='candidatoIndex')
-dt_fit_pipe = train_model(lr)
+dt_fit_pipe = train_model(dt)
+
+# COMMAND ----------
+
+
+tree_debug_string = dt_fit_pipe.stages[-1].toDebugString
+print(tree_debug_string)
 
 # COMMAND ----------
 
